@@ -1,0 +1,4 @@
+curl -i http://127.0.0.1:5000/api/reports
+curl -i http://127.0.0.1:5000/api/report/2
+curl -i -H 'Content-Type: application/json' -X POST -d '{"title":"read a book"}' 127.0.0.1:5000/api/report
+
