@@ -12,6 +12,13 @@ CREATE TABLE pdf (
   FOREIGN KEY(id_report) REFERENCES report(id_report)
 );
 
+CREATE TABLE section (
+  id_section varchar(8) PRIMARY KEY,
+  id_report varchar(8),
+
+  FOREIGN KEY(id_report) REFERENCES report(id_report)
+)
+
 INSERT INTO report (id_report, name)
 VALUES ('1', 'Report 1'),
        ('2', 'Report 2'),
