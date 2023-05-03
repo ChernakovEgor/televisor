@@ -10,7 +10,7 @@ def reports():
 
 @app.route('/api/report/<string:id>', methods=['GET'])
 def report(id):
-    res = db_broker.delete_report(id)
+    res = db_broker.get_report(id)
     return jsonify(f"report: {res}")
 
 @app.route('/api/report/<string:id>', methods=['DELETE'])
