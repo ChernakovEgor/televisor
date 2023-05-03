@@ -15,7 +15,10 @@ CREATE TABLE pdf (
 CREATE TABLE section (
   id_section varchar(8) PRIMARY KEY,
   id_report varchar(8),
-
+  section_name varchar(256),
+  slides TEXT,
+  pdf_num int8,
+  icon_path TEXT
   FOREIGN KEY(id_report) REFERENCES report(id_report)
 )
 
@@ -32,3 +35,13 @@ VALUES ('1', '1', 1, '3600', 'blabla.pdf'),
        ('4', '3', 1, '7200', 'new.pdf'),
        ('5', '3', 1, '7200', 'old.pdf'),
        ('6', '3', 1, '7200', 'new.pdf');
+
+
+-- sleep ~ 8 sec
+WITH RECURSIVE r(i) AS (
+  VALUES(0)
+  UNION ALL
+  SELECT i FROM r
+  LIMIT 50000000
+)
+SELECT i FROM r WHERE i = 1;
