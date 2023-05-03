@@ -1,5 +1,5 @@
 CREATE TABLE report (
-  id_report varchar(8) PRIMARY KEY,
+  id varchar(8) PRIMARY KEY,
   name varchar(255)
 );
 
@@ -15,14 +15,23 @@ CREATE TABLE pdf (
 CREATE TABLE section (
   id_section varchar(8) PRIMARY KEY,
   id_report varchar(8),
-  section_name varchar(256),
+  name varchar(256),
   slides TEXT,
   pdf_num int8,
-  icon_path TEXT
+  icon_path TEXT,
   FOREIGN KEY(id_report) REFERENCES report(id_report)
-)
+);
 
-INSERT INTO report (id_report, name)
+CREATE TABLE hyperlink (
+  id_hyperlink varchar(8) PRIMARY KEY,
+  id_report varchar(8),
+  name varchar(8),
+  slide_num int8,
+  pdf_num int8,
+  FOREIGN KEY(id_report) REFERENCES report(id_report)
+);
+
+INSERT INTO report (id, name)
 VALUES ('1', 'Report 1'),
        ('2', 'Report 2'),
        ('3', 'Report 3'),
@@ -36,6 +45,21 @@ VALUES ('1', '1', 1, '3600', 'blabla.pdf'),
        ('5', '3', 1, '7200', 'old.pdf'),
        ('6', '3', 1, '7200', 'new.pdf');
 
+INSERT INTO section (id_section, id_report, name, slides, pdf_num, icon_path)
+VALUES ('1', '1', 'Weekly', '[1, 2, 3]', 1, '/icons/1.svg'),
+       ('2', '1', 'Realtime', '[1, 2, 3]', 1, '/icons/1.svg'),
+       ('3', '2', 'Weekly', '[1, 2, 3]', 1, '/icons/1.svg'),
+       ('4', '2', 'Realtime', '[1, 2, 3]', 1, '/icons/1.svg'),
+       ('5', '3', 'Weekly', '[1, 2, 3]', 1, '/icons/1.svg'),
+       ('6', '3', 'Realtime', '[1, 2, 3]', 1, '/icons/1.svg');
+
+INSERT INTO hyperlink (id_hyperlink, id_report, name, slide_num, pdf_num)
+VALUES ('1', '1', 'mos.ru', 1, 1),
+       ('2', '1', 'mos.ru', 2, 1),
+       ('3', '2', 'mos.ru', 1, 1),
+       ('4', '2', 'mos.ru', 2, 1),
+       ('5', '3', 'mos.ru', 1, 1),
+       ('6', '3', 'mos.ru', 2, 1);
 
 -- sleep ~ 8 sec
 WITH RECURSIVE r(i) AS (
