@@ -1,4 +1,5 @@
 import sqlite3
+from multiprocessing import Pool
 import aiosqlite
 import asyncio
 
@@ -29,7 +30,7 @@ def sleep_query(num):
     """
     return query
 
-async def fetch_async(table: str, query: str):
+async def fetch_async(query: str, table: str):
     async with aiosqlite.connect(database) as db:
         db.row_factory = row_factory
         async with db.execute(query) as cursor:
@@ -44,14 +45,16 @@ def fetch(query):
     return res
 
 async def get_report(id: str):
-    tasks = [asyncio.create_task(fetch_async(table, query)) for table, query in get_select_queries(id).items()]
+    tasks = [asyncio.create_task(fetch_async(table=table, query=query)) for table, query in get_select_queries(id).items()]
     done, _ = await asyncio.wait(tasks)
-    # return [task.result() for task in done]
     res = {}
     for task in done:
         if 'report' in task.result():
             report = list(task.result()['report'])
-            res.update(report[0])
+            # res.update(report[0])
+            if len(report) == 0:
+                return {}
+            res.update(report.pop())
         else:
             res.update(task.result())
     return res
@@ -59,11 +62,26 @@ async def get_report(id: str):
 async def get_reports():
     tasks = [asyncio.create_task(fetch_async(table, query)) for table, query in get_select_queries_all().items()]
     done, _ = await asyncio.wait(tasks)
-    res = {}
-    for task in done:
-        res.update(task.result())
-    # return [task.result() for task in done]
-    return res
+    return [task.result() for task in done]
+
+async def get_reports_dumb():
+    report_ids = await fetch_async(table='report', query='SELECT id FROM report')
+    reports = []
+    for id in report_ids['report']:
+        reports.append(await get_report(id['id'])) 
+    return reports
+
+async def get_reports_dumb_pool():
+    report_ids = await fetch_async(table='report', query='SELECT id FROM report')
+    print(report_ids)
+    reports = []
+    ids = [id['id'] for id in report_ids['report']]
+    with Pool() as pool:
+        reports = pool.map_async(get_report, ids)
+        reports.wait()
+    # for id in report_ids['report']:
+    #     reports.append(await get_report(id['id'])) 
+    return reports.get()
 
 def update_pdf(id: str, pdf_num: int, pdf: bytes):
     pass
@@ -86,12 +104,16 @@ database = 'dev.db'
 # cur = con.cursor()
 
 async def main():   
-    result1 = (await get_report('1'))
-    result = (await get_reports())
-    # for row in result1:
+    reports = (await get_reports_dumb())
+    # reports = (await get_reports_dumb_pool())
+    for report in reports:
+        print(report, '\n')
+    # result1 = (await get_report('1'))
+    # result = (await get_reports())
+    # for row in result:
     #     print(row)
     #     print()
-    print(result1)
+    # print(result1)
 
 if __name__ == "__main__":
     asyncio.run(main())
