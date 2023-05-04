@@ -37,6 +37,17 @@ async def fetch_async(query: str, table: str):
             res = await cursor.fetchall()
             return {table: res}
 
+async def alter_async(query: str, dry_run=False):
+    if dry_run:
+        print(query)
+        return
+    async with aiosqlite.connect(database) as db:
+        await db.execute("PRAGMA foreign_keys = ON;")
+        await db.execute(query)
+        await db.commit()
+        return {}
+
+
 def fetch(query):
     con = sqlite3.connect(database)
     con.row_factory = row_factory
@@ -89,31 +100,51 @@ def update_pdf(id: str, pdf_num: int, pdf: bytes):
 def update_report(id: str):
     pass
 
-def delete_report(id: str):
-    pass
+async def delete_report(id: str):
+    results = await fetch_async(f"SELECT id FROM report WHERE id = '{id}';", "report")
+    if len(list(results['report'])) == 0:
+        return {f"db_error": "no reports with id = {id}"}
+    else:
+        return await alter_async(f"DELETE FROM report WHERE id = '{id}';")
 
-def insert_report(id: str):
-    pass
+async def insert_report(report):
+    id = report['id']
+    name = report['name']
+    pdfs = report['pdf']
+    sections = report['section']
+    hyperlinks = report['hyperlink']
+    
+    pdf_values = ','.join([f"('{id}', {pdf['num']}, {pdf['refresh_interval_ms']}, '{pdf['path']}')" for pdf in pdfs])
+    section_values = ','.join([f"('{id}', '{section['name']}', '{section['slides']}', {section['pdf_num']}, '{section['icon_path']}')" for section in sections])
+    hyperlink_values = ','.join([f"('{id}', '{hl['name']}', {hl['slide_num']}, {hl['pdf_num']})" for hl in hyperlinks])
+
+    tasks = []
+    tasks.append(asyncio.create_task(alter_async(f"INSERT INTO report (id, name) VALUES ('{id}', '{name}');")))
+    tasks.append(asyncio.create_task(alter_async(f"INSERT INTO pdf (id_report, num, refresh_interval_ms, path) VALUES {pdf_values};")))
+    tasks.append(asyncio.create_task(alter_async(f"INSERT INTO section (id_report, name, slides, pdf_num, icon_path) VALUES {section_values};")))
+    tasks.append(asyncio.create_task(alter_async(f"INSERT INTO hyperlink (id_report, name, slide_num, pdf_num) VALUES {hyperlink_values};")))
+
+    done, _ = await asyncio.wait(tasks)
+
+
 
 def row_factory(cursor: sqlite3.Cursor, row):
     keys = [result[0] for result in cursor.description]
     return {key: value for key, value in zip(keys, row)}
 
 database = 'dev.db'
+item = {'id': '10', 'name': 'Report 1', 
+        'pdf': [{'num': 10, 'refresh_interval_ms': 3600, 'path': 'blabla.pdf'},
+                {'num': 1, 'refresh_interval_ms': 3600, 'path': 'new.pdf'}],
+        'hyperlink': [{'name': 'mos.ru', 'slide_num': 1, 'pdf_num': 1}, 
+                      {'name': 'mos.ru', 'slide_num': 2, 'pdf_num': 1}], 
+        'section': [{'name': 'Weekly', 'slides': '[1, 2, 3]', 'pdf_num': 1, 'icon_path': '/icons/1.svg'}, 
+                    {'name': 'Realtime', 'slides': '[1, 2, 3]', 'pdf_num': 1, 'icon_path': '/icons/1.svg'}]}
 
 # cur = con.cursor()
 
 async def main():   
-    reports = (await get_reports_dumb())
-    # reports = (await get_reports_dumb_pool())
-    for report in reports:
-        print(report, '\n')
-    # result1 = (await get_report('1'))
-    # result = (await get_reports())
-    # for row in result:
-    #     print(row)
-    #     print()
-    # print(result1)
+    await insert_report(item)
 
 if __name__ == "__main__":
     asyncio.run(main())
