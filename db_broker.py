@@ -5,10 +5,10 @@ import asyncio
 import assets_manager
 
 def get_select_queries(id: str):
-    report_query = f"SELECT id, name FROM report WHERE id = '{id}';"
-    pdf_query = f"SELECT num, refresh_interval_ms, path FROM pdf WHERE id_report = '{id}'"
-    section_query = f"SELECT name, slides, pdf_num, icon_path FROM section WHERE id_report = '{id}'"
-    hyperlink_query = f"SELECT name, slide_num, pdf_num FROM hyperlink WHERE id_report = '{id}'"
+    report_query = f"SELECT id, name FROM report WHERE id = (?);"
+    pdf_query = f"SELECT num, refresh_interval_ms, path FROM pdf WHERE id_report = (?);"
+    section_query = f"SELECT name, slides, pdf_num, icon_path FROM section WHERE id_report = (?);"
+    hyperlink_query = f"SELECT name, slide_num, pdf_num FROM hyperlink WHERE id_report = (?);"
     return {'report': report_query, 'pdf': pdf_query, 'section': section_query, 'hyperlink': hyperlink_query}
 
 def get_select_queries_all():
@@ -31,10 +31,10 @@ def sleep_query(num):
     """
     return query
 
-async def fetch_async(query: str, table: str):
+async def fetch_async(query: str, table: str, params = ()):
     async with aiosqlite.connect(database) as db:
         db.row_factory = row_factory
-        async with db.execute(query) as cursor:
+        async with db.execute(query, params) as cursor:
             res = await cursor.fetchall()
             return {table: res}
 
@@ -57,7 +57,7 @@ def fetch(query):
     return res
 
 async def get_report(id: str):
-    tasks = [asyncio.create_task(fetch_async(table=table, query=query)) for table, query in get_select_queries(id).items()]
+    tasks = [asyncio.create_task(fetch_async(table=table, query=query, params=(id,))) for table, query in get_select_queries(id).items()]
     done, _ = await asyncio.wait(tasks)
     res = {}
     for task in done:
@@ -155,7 +155,12 @@ item_in = {'id': '13', 'name': 'Report 1',
 # cur = con.cursor()
 
 async def main():   
-    await insert_report(item_in)
-
+    # await insert_report(item_in)
+    q = "1' or 1 == 1; --"
+    norm = "10"
+    # print(await get_report(q))
+    # print()
+    # print(await get_report(norm))
+    print(await get_report("1' or 1 == 1; --"))
 if __name__ == "__main__":
     asyncio.run(main())
