@@ -6,9 +6,9 @@ import assets_manager
 
 def get_select_queries(id: str):
     report_query = f"SELECT id, name FROM report WHERE id = (?);"
-    pdf_query = f"SELECT num, refresh_interval_ms, path FROM pdf WHERE id_report = (?);"
-    section_query = f"SELECT name, slides, pdf_num, icon_path FROM section WHERE id_report = (?);"
-    hyperlink_query = f"SELECT name, slide_num, pdf_num FROM hyperlink WHERE id_report = (?);"
+    pdf_query = join_query
+    section_query = f"SELECT name, slides, pdf_num, icon_path FROM section WHERE report_id = (?);"
+    hyperlink_query = f"SELECT name, slide_num, pdf_num FROM hyperlink WHERE report_id = (?);"
     return {'report': report_query, 'pdf': pdf_query, 'section': section_query, 'hyperlink': hyperlink_query}
 
 def get_select_queries_all():
@@ -17,7 +17,6 @@ def get_select_queries_all():
     section_query = f"SELECT name, slides, pdf_num, icon_path FROM section"
     hyperlink_query = f"SELECT name, slide_num, pdf_num FROM hyperlink"
     return {'report': report_query, 'pdf': pdf_query, 'section': section_query, 'hyperlink': hyperlink_query}
-   
 
 def sleep_query(num):
     query = f"""
@@ -31,33 +30,27 @@ def sleep_query(num):
     """
     return query
 
-async def fetch_async(query: str, table: str, params = ()):
+async def select_async(query: str, table: str = '', params = ()):
     async with aiosqlite.connect(database) as db:
         db.row_factory = row_factory
         async with db.execute(query, params) as cursor:
             res = await cursor.fetchall()
+            # return {table: res} if table != '' else res
             return {table: res}
 
-async def alter_async(query: str, dry_run=False):
+async def alter_async(query: str, params = (), dry_run=False):
     if dry_run:
         print(query)
         return
     async with aiosqlite.connect(database) as db:
         await db.execute("PRAGMA foreign_keys = ON;")
-        await db.execute(query)
+        await db.execute(query, params)
         await db.commit()
         return {}
 
-
-def fetch(query):
-    con = sqlite3.connect(database)
-    con.row_factory = row_factory
-    res = con.execute(query).fetchall()
-    con.close()
-    return res
-
+# works!
 async def get_report(id: str):
-    tasks = [asyncio.create_task(fetch_async(table=table, query=query, params=(id,))) for table, query in get_select_queries(id).items()]
+    tasks = [asyncio.create_task(select_async(table=table, query=query, params=(id,))) for table, query in get_select_queries(id).items()]
     done, _ = await asyncio.wait(tasks)
     res = {}
     for task in done:
@@ -72,33 +65,21 @@ async def get_report(id: str):
     return res
 
 async def get_reports():
-    tasks = [asyncio.create_task(fetch_async(table, query)) for table, query in get_select_queries_all().items()]
+    tasks = [asyncio.create_task(select_async(table, query)) for table, query in get_select_queries_all().items()]
     done, _ = await asyncio.wait(tasks)
     return [task.result() for task in done]
 
+# works!
 async def get_reports_dumb():
-    report_ids = await fetch_async(table='report', query='SELECT id FROM report')
+    report_ids = await select_async(table='report', query='SELECT id FROM report')
     reports = []
     for id in report_ids['report']:
         reports.append(await get_report(id['id'])) 
     return reports
 
-async def get_reports_dumb_pool():
-    report_ids = await fetch_async(table='report', query='SELECT id FROM report')
-    print(report_ids)
-    reports = []
-    ids = [id['id'] for id in report_ids['report']]
-    with Pool() as pool:
-        reports = pool.map_async(get_report, ids)
-        reports.wait()
-    # for id in report_ids['report']:
-    #     reports.append(await get_report(id['id'])) 
-    return reports.get()
-
 async def update_pdf(id: str, pdf_num: int, pdf: bytes):
     pdf_path = '/foo/bar.pdf'
-    res = await alter_async(f"UPDATE pdf SET path = '{pdf_path}' WHERE id_report = '{id}' AND num = {pdf_num}")
-    
+    res = await alter_async(f"UPDATE pdf SET path = (?) WHERE id_report = (?) AND num = (?)", params=(pdf_path, id, pdf_num))
 
 async def update_report(report):
     id = report['id']
@@ -106,6 +87,7 @@ async def update_report(report):
     for key in report:
         if key == 'name':
             tasks.append(asyncio.create_task(alter_async(f"UPDATE report SET name = '{report['name']}' WHERE id = '{id}';")))
+            tasks.append(asyncio.create_task(alter_async(f"UPDATE report SET name = (?) WHERE id = (?);", (report['name'], id))))
         if key == 'pdf' or key == 'section' or key == 'section':
             rows = report[key]
             for row in rows:
@@ -113,12 +95,13 @@ async def update_report(report):
                 tasks.append(asyncio.create_task(alter_async(f"UPDATE {key} SET {', '.join(values)} WHERE id_report = '{id}';")))
     await asyncio.wait(tasks)
 
+# works!
 async def delete_report(id: str):
-    results = await fetch_async(f"SELECT id FROM report WHERE id = '{id}';", "report")
+    results = await select_async("SELECT id FROM report WHERE id = (?);", table="report", params=(id,))
     if len(list(results['report'])) == 0:
         return {f"db_error": "no reports with id = {id}"}
     else:
-        return await alter_async(f"DELETE FROM report WHERE id = '{id}';")
+        return await alter_async(f"DELETE FROM report WHERE id = (?);", params=(id,))
 
 async def insert_report(report):
     id = report['id']
@@ -152,15 +135,19 @@ item_in = {'id': '13', 'name': 'Report 1',
         'section': [{'name': 'Weekly', 'slides': '[1, 2, 3]', 'pdf_num': 1, 'icon_path': '/icons/1.svg'}, 
                     {'name': 'Realtime', 'slides': '[1, 2, 3]', 'pdf_num': 1, 'icon_path': '/icons/1.svg'}]}
 
+
+join_query = f"""
+    SELECT num, refresh_interval_ms, pdf_path 
+    FROM pdf_in_report
+    LEFT JOIN pdf
+    ON pdf_in_report.pdf_id = pdf.pdf_id
+    WHERE report_id = (?);
+"""
+
 # cur = con.cursor()
 
 async def main():   
-    # await insert_report(item_in)
-    q = "1' or 1 == 1; --"
-    norm = "10"
-    # print(await get_report(q))
-    # print()
-    # print(await get_report(norm))
-    print(await get_report("1' or 1 == 1; --"))
+    print(await delete_report('2'))
+
 if __name__ == "__main__":
     asyncio.run(main())
