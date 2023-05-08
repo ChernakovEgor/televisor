@@ -1,7 +1,12 @@
 import os
+import logging
 from io import BytesIO
 import filecmp
 import time
+
+data_dir = 'data/'
+pdf_dir = 'data/pdfs/'
+icon_dir = 'data/icons/'
 
 def generate_name(report_id: str, num: int):
     local_time = time.localtime()
@@ -16,11 +21,18 @@ def save_pdf(name: str, data: bytes):
         f.write(data) 
     for pdf in pdfs:
         comparison = filecmp.cmp(path_to_write, f"data/pdfs/{pdf}",  shallow=False)
-        print(comparison)
         if comparison:
             os.remove(path_to_write)
-            return {'status': 'existing', 'path': pdf}
-    return {'status': 'new', 'path' : name}
+            return pdf
+    return name
+
+def clean_up(pdfs_in_table):
+    pdfs_on_disk = os.listdir(pdf_dir)
+    for pdf in pdfs_on_disk:
+        if pdf not in pdfs_in_table:
+            logging.info(f"Deleting pdf {pdf}")
+            delete_pdf(pdf)
+    
 
 def delete_pdf(name):
     if os.path.exists(f"data/pdfs/{name}"):
@@ -45,7 +57,7 @@ def delete_icon(name):
         os.remove(f"data/icons/{name}")
 
 def main():
-   save_pdf('foo1', b'baz') 
+    clean_up(['dummy.pdf'])
 
 if __name__ == "__main__":
     main()
