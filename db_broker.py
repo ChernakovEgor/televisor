@@ -103,19 +103,32 @@ async def update_report(report):
     tasks = []
     for key in report:
         if key == 'name':
-            task = alter_async(f"UPDATE report SET name = (?) WHERE id = (?);", (report['name'], id))
-            # tasks.append(asyncio.create_task(alter_async(f"UPDATE report SET name = '{report['name']}' WHERE id = '{id}';")))
-            tasks.append(asyncio.create_task(task))
-            await task
-            print('Success')
+            task = asyncio.create_task(alter_async(f"UPDATE report SET name = (?) WHERE id = (?);", (report['name'], id)))
+            tasks.append(task)
+        if key == 'pdf':
+            rows = report['pdf']
+            for row in rows:
+                columns = []
+                values = ()
+                if 'num' in row:
+                   columns.append('num = (?)') 
+                   values += (row['num'], ) 
+                if 'refresh_interval_ms' in row:
+                   columns.append('refresh_interval_ms = (?)') 
+                   values += (row['refresh_interval_ms'], )
+                set_string = ','.join(columns)
+                pdf_update_query = "UPDATE pdf SET " + set_string + " WHERE report_id = (?);"
+                print(pdf_update_query)
+                print(values)
+                task = asyncio.create_task(alter_async(pdf_update_query, values))
+                tasks.append(task)
+
         if key == 'pdf' or key == 'section' or key == 'section':
             rows = report[key]
             for row in rows:
                 values = [f"{column} = '{value}'" for column, value in row.items()]
                 # ttask = alter_async(f"UPDATE {key} SET {', '.join(values)} WHERE id_report = '{id}';")
                 task = alter_async(f"UPDATE (?) SET (?) WHERE id_report = (?);", (key, ', '.join(values), id))
-                await task
-                print('Success')
                 tasks.append(asyncio.create_task(task))
     # await asyncio.wait(tasks)
 
@@ -173,7 +186,7 @@ item_in = {'id': '12', 'name': 'Report 1',
 
 item_udpate = {'id': '1', 'name': 'Report 1', 
         'pdf': [{'num': 10, 'refresh_interval_ms': 3600},
-                {'num': 1, 'refresh_interval_ms': 3600}],
+                {'num': 1}],
         'hyperlink': [{'name': 'mos.ru', 'slide_num': 1, 'pdf_num': 1}, 
                       {'name': 'mos.ru', 'slide_num': 2, 'pdf_num': 1}], 
         'section': [{'name': 'Weekly', 'slides': '[1, 2, 3]', 'pdf_num': 1, 'icon_path': '/icons/1.svg'}, 
@@ -181,7 +194,7 @@ item_udpate = {'id': '1', 'name': 'Report 1',
 
 
 async def main():   
-    await insert_report(item_in)
+    await update_report(item_udpate)
 
 if __name__ == "__main__":
     asyncio.run(main())
