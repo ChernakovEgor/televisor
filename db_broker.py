@@ -78,21 +78,26 @@ async def get_reports_dumb():
     return reports
 
 async def update_pdf(id: str, pdf_num: int, pdf: bytes):
-    pdf_path = '/foo/bar.pdf'
-    res = await alter_async(f"UPDATE pdf SET path = (?) WHERE id_report = (?) AND num = (?)", params=(pdf_path, id, pdf_num))
+    name = assets_manager.generate_name(id, pdf_num)
+    pdf_path = assets_manager.save_pdf(name=name, data=pdf)
+    pdf_id = 1
+    res = await alter_async(f"UPDATE pdf SET pdf_path = (?) WHERE pdf_id = (?)", params=(pdf_path, pdf_id))
 
 async def update_report(report):
     id = report['id']
     tasks = []
     for key in report:
         if key == 'name':
-            tasks.append(asyncio.create_task(alter_async(f"UPDATE report SET name = '{report['name']}' WHERE id = '{id}';")))
-            tasks.append(asyncio.create_task(alter_async(f"UPDATE report SET name = (?) WHERE id = (?);", (report['name'], id))))
+            task = alter_async(f"UPDATE report SET name = (?) WHERE id = (?);", (report['name'], id))
+            # tasks.append(asyncio.create_task(alter_async(f"UPDATE report SET name = '{report['name']}' WHERE id = '{id}';")))
+            tasks.append(asyncio.create_task(task))
         if key == 'pdf' or key == 'section' or key == 'section':
             rows = report[key]
             for row in rows:
                 values = [f"{column} = '{value}'" for column, value in row.items()]
-                tasks.append(asyncio.create_task(alter_async(f"UPDATE {key} SET {', '.join(values)} WHERE id_report = '{id}';")))
+                # ttask = alter_async(f"UPDATE {key} SET {', '.join(values)} WHERE id_report = '{id}';")
+                ttask = alter_async(f"UPDATE (?) SET (?) WHERE id_report = (?);", (key, ', '.join(values), id))
+                tasks.append(asyncio.create_task(ttask))
     await asyncio.wait(tasks)
 
 # works!
@@ -101,7 +106,8 @@ async def delete_report(id: str):
     if len(list(results['report'])) == 0:
         return {f"db_error": "no reports with id = {id}"}
     else:
-        return await alter_async(f"DELETE FROM report WHERE id = (?);", params=(id,))
+        await alter_async(f"DELETE FROM report WHERE id = (?);", params=(id,))
+        # TODO: check pdf_in_report join on pdf & delete pdfs with no reference to table
 
 async def insert_report(report):
     id = report['id']
@@ -109,13 +115,14 @@ async def insert_report(report):
     pdfs = report['pdf']
     sections = report['section']
     hyperlinks = report['hyperlink']
+   
+    # pdf_path = assets_manager.save_pdf()
     
-    pdf_values = ','.join([f"('{id}', {pdf['num']}, {pdf['refresh_interval_ms']}, '{assets_manager.save_pdf(assets_manager.generate_name(id, pdf['num']) ,pdf['pdf'])}')" for pdf in pdfs])
     section_values = ','.join([f"('{id}', '{section['name']}', '{section['slides']}', {section['pdf_num']}, '{section['icon_path']}')" for section in sections])
     hyperlink_values = ','.join([f"('{id}', '{hl['name']}', {hl['slide_num']}, {hl['pdf_num']})" for hl in hyperlinks])
 
     tasks = []
-    await alter_async(f"INSERT INTO report (id, name) VALUES ('{id}', '{name}');")
+    await alter_async(f"INSERT INTO report (id, name) VALUES ((?), (?));", params=(id, name))
     tasks.append(asyncio.create_task(alter_async(f"INSERT INTO pdf (id_report, num, refresh_interval_ms, path) VALUES {pdf_values};")))
     tasks.append(asyncio.create_task(alter_async(f"INSERT INTO section (id_report, name, slides, pdf_num, icon_path) VALUES {section_values};")))
     tasks.append(asyncio.create_task(alter_async(f"INSERT INTO hyperlink (id_report, name, slide_num, pdf_num) VALUES {hyperlink_values};")))
@@ -144,10 +151,21 @@ join_query = f"""
     WHERE report_id = (?);
 """
 
+pdf_query = """
+UPDATE pdf
+SET pdf_path = (?)
+WHERE pdf_id IN (
+    SELECT pdf_id
+      FROM pdf_in_report
+     WHERE report_id = (?)
+);
+"""
+
 # cur = con.cursor()
 
 async def main():   
-    print(await delete_report('2'))
+    # print(await update_pdf('1', 1, b'foooooooooooooooo'))
+    await alter_async(pdf_query, ('foo', '1'))
 
 if __name__ == "__main__":
     asyncio.run(main())

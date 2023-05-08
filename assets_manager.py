@@ -1,4 +1,6 @@
 import os
+from io import BytesIO
+import filecmp
 import time
 
 def generate_name(report_id: str, num: int):
@@ -8,10 +10,17 @@ def generate_name(report_id: str, num: int):
     return f"{report_id}_{num}_{time_string}.pdf"
 
 def save_pdf(name: str, data: bytes):
-    path = f"data/pdfs/{name}"
-    with open(path, 'wb') as f:
+    pdfs = os.listdir("data/pdfs/")
+    path_to_write = f"data/pdfs/{name}"
+    with open(path_to_write, 'wb') as f:
         f.write(data) 
-        return path 
+    for pdf in pdfs:
+        comparison = filecmp.cmp(path_to_write, f"data/pdfs/{pdf}",  shallow=False)
+        print(comparison)
+        if comparison:
+            os.remove(path_to_write)
+            return {'status': 'existing', 'path': pdf}
+    return {'status': 'new', 'path' : name}
 
 def delete_pdf(name):
     if os.path.exists(f"data/pdfs/{name}"):
@@ -36,8 +45,7 @@ def delete_icon(name):
         os.remove(f"data/icons/{name}")
 
 def main():
-    print(generate_name('1', 1))
-    print(generate_name('1', 1))
+   save_pdf('foo1', b'baz') 
 
 if __name__ == "__main__":
     main()
