@@ -14,6 +14,18 @@ WHERE pdf_id IN (
 );
 """
 
+report_table_columns = ['id', 'name']
+pdf_table_columns = ['report_id', 'pdf_id', 'num', 'refresh_interval_ms', 'file_name']
+section_table_columns = ['report_id', 'section_id', 'name', 'slides', 'pdf_num', 'icon_path']
+hyperlink_table_columns = ['report_id', 'hyperlink_id', 'name', 'slide_num', 'pdf_num']
+
+schema = {
+    'report': report_table_columns,
+    'pdf': pdf_table_columns,
+    'section': section_table_columns,
+    'hyperlink': hyperlink_table_columns
+}
+
 def get_select_queries(id: str):
     report_query = f"SELECT id, name FROM report WHERE id = (?);"
     # pdf_query = join_query
@@ -49,8 +61,9 @@ async def select_async(query: str, table: str = '', params = (), as_dict=True):
             db.row_factory = single_param_factory
         async with db.execute(query, params) as cursor:
             res = await cursor.fetchall()
+            res_to_list = [dict(r) for r in res]
             # return {table: res} if table != '' else res
-            return {table: res}
+            return {table: res_to_list}
 
 async def alter_async(query: str, params = [], dry_run=False):
     if dry_run:
@@ -72,14 +85,19 @@ async def get_report(id: str):
     done, _ = await asyncio.wait(tasks)
     res = {}
     for task in done:
-        if 'report' in task.result():
-            report = list(task.result()['report'])
+        table_dict = task.result()
+        if 'report' in table_dict:
+            report = list(table_dict['report'])
             # res.update(report[0])
             if len(report) == 0:
                 return {}
             res.update(report.pop())
         else:
-            res.update(task.result())
+            if 'pdf' in table_dict: #or 'section' in table_dict:
+                pdfs_with_bytes = [{'num': row['num'], 'pdf': assets_manager.get_pdf(row['file_name'])} for row in table_dict['pdf']] 
+                table_dict['pdf'] = pdfs_with_bytes
+               
+            res.update(table_dict)
     return res
 
 
@@ -98,6 +116,7 @@ async def update_pdf(id: str, pdf_num: int, pdf: bytes):
     pdfs = await select_async("SELECT file_name FROM pdf;", table='pdf', as_dict=False)
     assets_manager.clean_up(pdfs['pdf'])
 
+# TODO: section and hyperlink identification
 async def update_report(report):
     id = report['id']
     tasks = []
@@ -105,32 +124,49 @@ async def update_report(report):
         if key == 'name':
             task = asyncio.create_task(alter_async(f"UPDATE report SET name = (?) WHERE id = (?);", (report['name'], id)))
             tasks.append(task)
-        if key == 'pdf':
-            rows = report['pdf']
+        # if key == 'pdf':
+        #     rows = report['pdf']
+        #     for row in rows:
+        #         columns = []
+        #         values = ()
+        #         if 'num' in row:
+        #            columns.append('num = (?)') 
+        #            values += (row['num'], ) 
+        #         if 'refresh_interval_ms' in row:
+        #            columns.append('refresh_interval_ms = (?)') 
+        #            values += (row['refresh_interval_ms'], )
+        #         set_string = ','.join(columns)
+        #         pdf_update_query = "UPDATE pdf SET " + set_string + " WHERE report_id = (?);"
+        #         # print(pdf_update_query)
+        #         # print(values)
+        #         task = asyncio.create_task(alter_async(pdf_update_query, values))
+        #         tasks.append(task)
+
+        
+        if key == 'pdf' or key == 'section' or key == 'hyperlink':
+            rows = report[key]
             for row in rows:
                 columns = []
                 values = ()
-                if 'num' in row:
-                   columns.append('num = (?)') 
-                   values += (row['num'], ) 
-                if 'refresh_interval_ms' in row:
-                   columns.append('refresh_interval_ms = (?)') 
-                   values += (row['refresh_interval_ms'], )
-                set_string = ','.join(columns)
-                pdf_update_query = "UPDATE pdf SET " + set_string + " WHERE report_id = (?);"
-                print(pdf_update_query)
-                print(values)
-                task = asyncio.create_task(alter_async(pdf_update_query, values))
+                for column in row:
+                    if column in schema[key]:
+                        columns.append(f"{column} = (?)")
+                        values += (row[column], )
+                values += (id, )
+                set_string = ', '.join(columns)
+                update_query = f"UPDATE {key} SET " + set_string + " WHERE report_id = (?);"
+                print(update_query, values, '\n')
+                task = asyncio.create_task(alter_async(update_query, values))
                 tasks.append(task)
-
-        if key == 'pdf' or key == 'section' or key == 'section':
-            rows = report[key]
-            for row in rows:
-                values = [f"{column} = '{value}'" for column, value in row.items()]
-                # ttask = alter_async(f"UPDATE {key} SET {', '.join(values)} WHERE id_report = '{id}';")
-                task = alter_async(f"UPDATE (?) SET (?) WHERE id_report = (?);", (key, ', '.join(values), id))
-                tasks.append(asyncio.create_task(task))
-    # await asyncio.wait(tasks)
+        
+    #     if key == 'pdf' or key == 'section' or key == 'section':
+    #         rows = report[key]
+    #         for row in rows:
+    #             values = [f"{column} = '{value}'" for column, value in row.items()]
+    #             # ttask = alter_async(f"UPDATE {key} SET {', '.join(values)} WHERE id_report = '{id}';")
+    #             task = alter_async(f"UPDATE (?) SET (?) WHERE id_report = (?);", (key, ', '.join(values), id))
+    #             tasks.append(asyncio.create_task(task))
+    await asyncio.wait(tasks)
 
 # works!
 async def delete_report(id: str):
@@ -184,17 +220,17 @@ item_in = {'id': '12', 'name': 'Report 1',
         'section': [{'name': 'Weekly', 'slides': '[1, 2, 3]', 'pdf_num': 1, 'icon_path': '/icons/1.svg'}, 
                     {'name': 'Realtime', 'slides': '[1, 2, 3]', 'pdf_num': 1, 'icon_path': '/icons/1.svg'}]}
 
-item_udpate = {'id': '1', 'name': 'Report 1', 
-        'pdf': [{'num': 10, 'refresh_interval_ms': 3600},
+item_udpate = {'id': '12', 'name': 'Changed name', 
+        'pdf': [{'num': 10, 'refresh_interval_ms': 228},
                 {'num': 1}],
-        'hyperlink': [{'name': 'mos.ru', 'slide_num': 1, 'pdf_num': 1}, 
-                      {'name': 'mos.ru', 'slide_num': 2, 'pdf_num': 1}], 
-        'section': [{'name': 'Weekly', 'slides': '[1, 2, 3]', 'pdf_num': 1, 'icon_path': '/icons/1.svg'}, 
-                    {'name': 'Realtime', 'slides': '[1, 2, 3]', 'pdf_num': 1, 'icon_path': '/icons/1.svg'}]}
+        'hyperlink': [{'name': 'new.ru', 'slide_num': 228, 'pdf_num': 228}, 
+                      {'name': 'new_new.ru', 'slide_num': 1488, 'pdf_num': 1488}], 
+        'section': [{'name': 'New weekly', 'slides': '[10, 11, 23]', 'pdf_num': 1488, 'icon_path': 'new path'}, 
+                    {'name': 'New realtime', 'slides': '[20, 30, 40]', 'pdf_num': 228, 'icon_path': 'new_path'}]}
 
 
 async def main():   
-    await update_report(item_udpate)
+    print(await get_report('100'))
 
 if __name__ == "__main__":
     asyncio.run(main())
