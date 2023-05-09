@@ -64,8 +64,8 @@ t3 = """CREATE TRIGGER pdf_in_report_timestamp AFTER UPDATE ON pdf_in_report
 """
 
 c4 = """CREATE TABLE section (
-  section_id INTEGER PRIMARY KEY,
   report_id varchar(8),
+  section_id INTEGER PRIMARY KEY,
   name varchar(256),
   slides TEXT,
   pdf_num int8,
@@ -86,8 +86,8 @@ t4 = """CREATE TRIGGER section_timestamp AFTER UPDATE ON section
 """
 
 c5 = """CREATE TABLE hyperlink (
-  hyperlink_id INTEGER PRIMARY KEY,
   report_id varchar(8),
+  hyperlink_id INTEGER PRIMARY KEY,
   name varchar(8),
   slide_num int8,
   pdf_num int8,
