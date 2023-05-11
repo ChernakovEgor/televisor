@@ -61,9 +61,9 @@ async def select_async(query: str, table: str = '', params = (), as_dict=True):
             db.row_factory = single_param_factory
         async with db.execute(query, params) as cursor:
             res = await cursor.fetchall()
-            res_to_list = [dict(r) for r in res]
+            res = [dict(r) for r in res] if as_dict else res
             # return {table: res} if table != '' else res
-            return {table: res_to_list}
+            return {table: res}
 
 async def alter_async(query: str, params = [], dry_run=False):
     if dry_run:
@@ -116,7 +116,7 @@ async def update_pdf(id: str, pdf_num: int, pdf: bytes):
     pdfs = await select_async("SELECT file_name FROM pdf;", table='pdf', as_dict=False)
     assets_manager.clean_up(pdfs['pdf'])
 
-# TODO: section and hyperlink identification
+# TODO: check section and hyperlink identification
 async def update_report(report):
     id = report['id']
     tasks = []
@@ -192,8 +192,19 @@ def row_factory(cursor: sqlite3.Cursor, row):
     keys = [result[0] for result in cursor.description]
     return {key: value for key, value in zip(keys, row)}
 
+async def handle_incoming_report(report):
+    count_dict = await select_async(query="SELECT COUNT(id) FROM report WHERE id = (?);", table='report', params=(report['id'], ), as_dict=False)
+    number = count_dict['report'][0]
+    print(number)
+    if number > 0:
+        print('Update')
+        # await update_report(report)
+    else:
+        print('Insert')
+        # await insert_report(report)
+
 database = 'dev.db'
-item_in = {'id': '12', 'name': 'Report 1', 
+item_in = {'id': '43534', 'name': 'Report 1', 
         'pdf': [{'num': 10, 'refresh_interval_ms': 3600, 'pdf': b'213'},
                 {'num': 1, 'refresh_interval_ms': 3600, 'pdf': b'123'}],
         'hyperlink': [{'name': 'mos.ru', 'slide_num': 1, 'pdf_num': 1}, 
@@ -209,12 +220,9 @@ item_udpate = {'id': '2', 'name': 'Changed name',
         'section': [{'name': 'New weekly', 'slides': '[10, 11, 23]', 'pdf_num': 1488, 'icon_path': 'new path'}, 
                     {'name': 'New realtime', 'slides': '[20, 30, 40]', 'pdf_num': 1, 'icon_path': 'new_path'}]}
 
-q = "UPDATE hyperlink SET name = (?), slide_num = (?) WHERE report_id = (?) AND pdf_num = (?); "
-vs = ('new_new.ru', 2, '2', 1488)
 
 async def main():   
-    await update_report(item_udpate)
-    # await alter_async(q, vs)
+    await handle_incoming_report(item_in)
 
 if __name__ == "__main__":
     asyncio.run(main())
