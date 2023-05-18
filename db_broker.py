@@ -1,10 +1,11 @@
 import sqlite3
-from multiprocessing import Pool
+# from multiprocessing import Pool
 import aiosqlite
 import asyncio
 import assets_manager
 
-pdf_query = """
+# вроде нигде не используется, но пока не рискну удалять
+pdf_update_query = """
 UPDATE pdf
 SET pdf_path = (?)
 WHERE pdf_id IN (
@@ -14,11 +15,11 @@ WHERE pdf_id IN (
 );
 """
 
+# ""модель"" БД в виде словаря с списками и названиями столбцов, для удобства в некоторых запросах
 report_table_columns = ['id', 'name']
 pdf_table_columns = ['report_id', 'pdf_id', 'num', 'refresh_interval_ms', 'file_name']
 section_table_columns = ['report_id', 'section_id', 'name', 'slides', 'pdf_num', 'icon_path']
 hyperlink_table_columns = ['report_id', 'hyperlink_id', 'name', 'slide_num', 'pdf_num']
-
 schema = {
     'report': report_table_columns,
     'pdf': pdf_table_columns,
@@ -26,6 +27,7 @@ schema = {
     'hyperlink': hyperlink_table_columns
 }
 
+# эта и следующая функция возвращают словари с запросами для каждой таблицы, выведены в отдельные функции для читабельности кода
 def get_select_queries(id: str):
     report_query = f"SELECT id, name FROM report WHERE id = (?);"
     # pdf_query = join_query
@@ -41,6 +43,7 @@ def get_select_queries_all():
     hyperlink_query = f"SELECT name, slide_num, pdf_num FROM hyperlink"
     return {'report': report_query, 'pdf': pdf_query, 'section': section_query, 'hyperlink': hyperlink_query}
 
+# функция, имитирующая долгий запрос
 def sleep_query(num):
     query = f"""
     WITH RECURSIVE r(i) AS (
@@ -53,6 +56,7 @@ def sleep_query(num):
     """
     return query
 
+# функция, выполняющая селект запрос. as_dict = True возвращает словарь, as_dict = Fale возвращает список. Это поведение задаёт row_factory, особенная фишка sqlite 
 async def select_async(query: str, table: str = '', params = (), as_dict=True):
     async with aiosqlite.connect(database) as db:
         if as_dict:
@@ -65,6 +69,7 @@ async def select_async(query: str, table: str = '', params = (), as_dict=True):
             # return {table: res} if table != '' else res
             return {table: res}
 
+# функция для модифицирующих запросов. если на вход идёт список params (происходит в INSERT запросах), то вызывается executemany вместо execute
 async def alter_async(query: str, params = [], dry_run=False):
     if dry_run:
         print(query)
@@ -79,6 +84,7 @@ async def alter_async(query: str, params = [], dry_run=False):
             await db.execute(query, params)
         await db.commit()
 
+# возвращает один отчёт со всей информацией
 # TODO: add bytes to response
 async def get_report(id: str):
     tasks = [asyncio.create_task(select_async(table=table, query=query, params=(id,))) for table, query in get_select_queries(id).items()]
@@ -100,7 +106,7 @@ async def get_report(id: str):
             res.update(table_dict)
     return res
 
-
+# возвращает все отчёты, работает глупо (вызывает get_report для каждого отчёта)
 async def get_reports_dumb():
     report_ids = await select_async(table='report', query='SELECT id FROM report')
     reports = []
@@ -116,7 +122,7 @@ async def update_pdf(id: str, pdf_num: int, pdf: bytes):
     pdfs = await select_async("SELECT file_name FROM pdf;", table='pdf', as_dict=False)
     assets_manager.clean_up(pdfs['pdf'])
 
-# TODO: check section and hyperlink identification
+# TODO: rewrite section and hyperlink
 async def update_report(report):
     id = report['id']
     tasks = []
@@ -203,6 +209,7 @@ async def handle_incoming_report(report):
         print('Insert')
         # await insert_report(report)
 
+# для тестов
 database = 'dev.db'
 item_in = {'id': '43534', 'name': 'Report 1', 
         'pdf': [{'num': 10, 'refresh_interval_ms': 3600, 'pdf': b'213'},
